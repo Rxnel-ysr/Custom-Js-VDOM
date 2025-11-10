@@ -459,18 +459,19 @@ const patchComponent = (parent, oldComp, newComp) => {
 const handleComponent = (parent, old, newOne) => {
     if (old?.isComp && newOne?.isComp) {
         if (old.stringified !== newOne.stringified) {
-            console.log("Not same component", parent, old.el, newOne);
+            // console.log("Not same component", parent, old.el, newOne);
+            // current, its based on current hooknode,
 
             if (old.compHooks > newOne.compHooks) {
-                forgot(old.compHooks - 1)
-                orphan(old.compHooks - 1)
-                allocate(newOne.compHooks - 1)
+                forgot(old.compHooks)
+                // orphan(old.compHooks)
+                allocate(old.compHooks - newOne.compHooks)
             } else if (old.compHooks < newOne.compHooks) {
-                forgot(old.compHooks - 1)
-                orphan(old.compHooks - 1)
-                allocate(newOne.compHooks - 1)
+                forgot(old.compHooks)
+                allocate(newOne.compHooks - old.compHooks)
+                // orphan(old.compHooks)
             } else if (old.compHooks === newOne.compHooks) {
-                forgot(old.compHooks - 1)
+                forgot(old.compHooks)
             }
             // orphan(old.compHooks)
             // allocate(old.compHooks)
@@ -483,7 +484,7 @@ const handleComponent = (parent, old, newOne) => {
 
             return newOne
         } else {
-            console.log("Same component", parent, old, newOne);
+            // console.log("Same component", parent, old, newOne);
             return patchComponent(parent, old, newOne)
         }
     } else if (old?.isComp && !newOne?.isComp) {

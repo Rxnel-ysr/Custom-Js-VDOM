@@ -1,6 +1,5 @@
-import { getHooks, setHooks } from './hmr.store.js';
-import { RenderVDOM } from './vdom.old.js';
-import { getTarget } from './vdom.old.js';
+import { getHooks, setHooks } from './state.js';
+import { RenderVDOM, getTarget } from './vdom.js';
 
 let currentComponent = null,
     previewComponent = null,
@@ -26,11 +25,10 @@ const forgot = (n = 1) => {
 
     let hookNode = currentComponent.hookNode;
     if (!hookNode) return;
-    delete hookNode.value
 
     // console.log(hookNode, 'Lo');
-    for (let i = 0; i < n && hookNode.next; i++) {
-        hookNode.value = undefined
+    for (let i = 1; i <= n && hookNode.next; i++) {
+        delete hookNode.value
         hookNode = hookNode.next;
     }
     // currentComponent.hookNode = hookNode;
@@ -48,7 +46,7 @@ const resetPreview = () => {
 const trailMaker = (n = 1) => {
     let head = { next: null }
     let node = head
-    for (let i = 0; i < n; i++) {
+    for (let i = 1; i <= n; i++) {
         node = node.next = { next: null }
     }
 
@@ -59,7 +57,7 @@ const allocate = (n) => {
     let start = currentComponent.hookNode
     // delete start.value
     // console.log("allocated", start);
-    let [head, tail] = trailMaker(n)
+    let [head, tail] = trailMaker(n - 1)
 
     tail.next = start.next
     start.next = head
@@ -73,14 +71,13 @@ const orphan = (n) => {
     let end = start
     // console.log("orphaned", start);
 
-
-    for (let i = 0; i < n; i++) {
+    for (let i = 1; i <= n; i++) {
         end = end.next = end.next
     }
 
     start.next = end?.next || null
 
-    console.log("orphaned end", start);
+    // console.log("orphaned end", start);
 }
 
 const manageComponent = (compA, compB) => {
@@ -359,9 +356,9 @@ function createRoot(fn, target, id = 'default') {
                 // console.log(currentComponent)
                 comp.vdom = RenderVDOM.update(comp.target, comp.vdom, newVNode);
                 // console.log(currentComponent)
-                // console.log({ After: comp.vdom });
-                
-                console.log(comp);
+                // console.log({ After: comp.vdom });   
+
+                // console.log(comp);
             }
             setHooks(id, comp.hooks);
         }

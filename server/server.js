@@ -17,7 +17,7 @@ const mimeTypes = {
 
 const coreFiles = [
     'main.js',
-    'vdom.old.js',
+    'vdom.js',
     'vdom.hooks.js',
     'hmr.store.js'
 ];
@@ -84,6 +84,8 @@ const server = http.createServer(async (req, res) => {
             code = transformImports(code, fullPath);
             // code = injectHMR(code, pathname);
         }
+        // console.log("hi");
+        
 
         res.end(code);
     } catch {

@@ -7,7 +7,36 @@
 
 <body>
     <div id="app"></div>
-    <script type="module" src="./main.js" defer></script>
+    <script type="module">
+        window.hmrImport = async function (path, names) {
+            const skipReload = [
+                'core/',
+                'misc/',
+                'core/vdom.js',
+                'vdom.hooks.js',
+                'router/index.js',
+            ];
+
+            for (const pattern of skipReload) {
+                if (path.includes(pattern)) {
+                    const mod = await import(path);
+                    if (names === 'default') return mod.default;
+                    const out = {};
+                    for (const name of names) out[name] = mod[name];
+                    return out;
+                }
+            }
+
+            const mod = await import(path + '?t=' + Date.now());
+            if (names === 'default') return mod.default;
+
+            const out = {};
+            for (const name of names) out[name] = mod[name];
+            return out;
+        };
+
+    </script>
+    <script type="module" src="/main.js" defer></script>
 
 </body>
 
