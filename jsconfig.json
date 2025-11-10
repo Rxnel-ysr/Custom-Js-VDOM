@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "target": "esnext",
+        "jsx": "react-jsx",
+        "allowImportingTsExtensions": true,
+        "alwaysStrict": true,
+        "strictNullChecks": true,
+        "strictFunctionTypes": true,
+    },
+    "exclude": [
+        "node_modules",
+        "**/node_modules/*",
+        "core"
+    ]
+}
