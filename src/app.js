@@ -1,30 +1,23 @@
 // App.js
 import { html } from "../DSL-DOM/core/vdom.js";
-import { comp, useState } from "../DSL-DOM/core/vdom.hooks.js";
-import Router from "../router/index.js";
-import compB from "./components/compB.js";
-
-const combA = () => {
-    let [a, setA] = useState("INI A")
-    return html.div({}, html.input({ type: "text", oninput: (e) => setA(e.target.value), value: a }), `${a}`)
-}
+import { useState } from "../DSL-DOM/core/vdom.hooks.js";
 
 const App = () => {
-    let [toggle, setToggle] = useState(true);
-    // console.log(Router.routerView())
+    const [counter, setCounter] = useState(0);
 
-    return html.div({},
-        html.button(
-            { onclick: () => setToggle(a => !a) },
-            "Ubah"),
-        Router.routerView(),
-        toggle ? comp(combA) : comp(compB),
-        comp(compB),
-
-        html.button({ onclick: () => Router.go('/test') }, "Go to test"),
-        html.button({ onclick: () => Router.go('/compB') }, "Go to compB"),
-
-    )
+    return html.div({
+        style: {
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '1rem'
+        }
+    }, [
+        html.h1(`${counter}`),
+        html.br(),
+        html.button({ onclick: () => setCounter(i => i + 1) }, "Add")
+    ])
 
 }
 

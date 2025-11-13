@@ -9,7 +9,6 @@ const appRouter = create({
 })
 
 const scrollToHash = (hash) => {
-    // console.log(hash);
     const el = document.querySelector(hash);
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -26,16 +25,10 @@ registerCustomVdom('routerLink', (props = {}, ...children) => {
     return createVNode('a', {
         ...props, onclick: (e) => {
             e.preventDefault()
-            // console.log("hm");
-
-
             if (destination) {
-                // console.log("hm a");
                 appRouter.go(destination);
             }
-            // console.log(to.lastIndexOf('#'));
             if (scroll) {
-                // console.log("hm b");
                 scrollToHash(scroll);
             }
         }
