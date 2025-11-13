@@ -5,7 +5,7 @@ import path from 'path';
 // import Url from 'url';
 import { createWSServer } from './webSock.js';
 import { watch } from '../core/file-watcher.js';
-import env from '../env.json' with {type: 'json'}
+import env from '../../env.json' with {type: 'json'}
 
 const root = process.cwd();
 const mimeTypes = {
@@ -13,81 +13,100 @@ const mimeTypes = {
     '.json': 'application/json',
     '.html': 'text/html',
     '.css': 'text/css',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.ico': 'image/x-icon',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml'
 };
+
+const binary = [
+    '.png',
+    '.jpeg',
+    '.webp',
+    '.mp3',
+    '.mp4',
+    '.svg'
+]
 
 const coreFiles = [
     'main.js',
     'vdom.js',
     'vdom.hooks.js',
-    'hmr.store.js'
+    'state.js'
 ];
 
-const { broadcast } = createWSServer(env.server);
-let prev, prevRepeat = 1;
+if (env.hmr) {
+    const { broadcast } = createWSServer(env.server);
+    let prev, prevRepeat = 1;
 
-watch(root, (filePath) => {
-    const relativePath = '/' + path.relative(root, filePath).replace(/\\/g, '/');
+    watch(root, (filePath) => {
+        const relativePath = '/' + path.relative(root, filePath).replace(/\\/g, '/');
 
-    if (coreFiles.includes(path.basename(filePath))) return;
+        if (coreFiles.includes(path.basename(filePath))) return;
 
-    if (relativePath === prev) {
-        prevRepeat++;
-    } else {
-        prevRepeat = 1;
-        prev = relativePath;
-    }
+        if (relativePath === prev) {
+            prevRepeat++;
+        } else {
+            prevRepeat = 1;
+            prev = relativePath;
+        }
 
-    const time = new Date().toLocaleTimeString();
-    const emoji = prevRepeat > 1 ? '🔁' : '🔄';
+        const time = new Date().toLocaleTimeString();
+        const emoji = prevRepeat > 1 ? '🔁' : '🔄';
 
-    console.log(
-        `%c[HMR]%c ${emoji} ${relativePath}%c${prevRepeat > 1 ? ` (${prevRepeat}x)` : ''} %cat ${time}`,
-        'color: #42b883; font-weight: bold',
-        'color: #ffffff',
-        'color: #42b883; font-weight: bold',
-        'color: #888; font-style: italic'
-    );
+        console.log(
+            `%c[HMR]%c ${emoji} ${relativePath}%c${prevRepeat > 1 ? ` (${prevRepeat}x)` : ''} %cat ${time}`,
+            'color: #42b883; font-weight: bold',
+            'color: #ffffff',
+            'color: #42b883; font-weight: bold',
+            'color: #888; font-style: italic'
+        );
 
-    broadcast({
-        type: 'reload',
-        path: relativePath,
-        timestamp: Date.now()
+        broadcast({
+            type: 'reload',
+            path: relativePath,
+            timestamp: Date.now()
+        });
     });
-});
-
+}
 const hasExtension = (url) => /\.[^/]+$/.test(url)
 
 // Frontend server
 const server = http.createServer(async (req, res) => {
-    const parsedUrl = new URL(req.url, `http://${req.headers.host}`);;
-    let pathname = decodeURIComponent(parsedUrl.pathname);
-    pathname = pathname.replace(/\?.*$/, '');
-    if (pathname === '/') pathname = '/index.html';
-    if (!hasExtension(pathname)) pathname = '/index.html';
-    // console.log(pathname, hasExtension(pathname));
-    
-
-    const fullPath = path.join(root, pathname);
-    const ext = path.extname(fullPath);
-    const basename = path.basename(fullPath);
-    const type = mimeTypes[ext] || 'text/plain';
-
     try {
-        let code = await fs.readFile(fullPath, 'utf-8');
+        const parsedUrl = new URL(req.url, `http://${req.headers.host}`);;
+        let pathname = decodeURIComponent(parsedUrl.pathname);
+        pathname = pathname.replace(/\?.*$/, '');
+        if (pathname === '/') pathname = '/index.html';
+        if (!hasExtension(pathname)) pathname = '/index.html';
+        // console.log(pathname, hasExtension(pathname));
+
+        const fullPath = path.join(root, pathname);
+        const ext = path.extname(fullPath);
+        const basename = path.basename(fullPath);
+        const type = mimeTypes[ext] || 'text/plain';
+
+        let content;
+
+        if (binary.includes(ext)) {
+            content = await fs.readFile(fullPath);
+        } else {
+            content = await fs.readFile(fullPath, 'utf-8');
+        }
+        // console.log(content);
+
         res.setHeader('Content-Type', type);
         res.setHeader('Cache-Control', 'no-store, must-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
-
-
+        // console.log("triggered", type);
         if (ext === '.js' && !coreFiles.includes(basename)) {
-            code = transformImports(code, fullPath);
-            // code = injectHMR(code, pathname);
+            content = transformImports(content, fullPath);
         }
-        // console.log("hi");
-        
-
-        res.end(code);
+        res.end(content);
     } catch {
         res.writeHead(404);
         res.end('404: Not Found');

@@ -53,7 +53,7 @@ function cleanupVNode(node) {
         // console.log(node.props);
 
         try {
-            node.props?.useCleanup();
+            node.props.useCleanup(node.el);
         } catch (e) {
             // console.warn('VNode cleanup error:', e);
         }
@@ -145,7 +145,7 @@ const updateProps = (el, oldProps, newProps) => {
 };
 
 
-const renderVNode = (vnode) => {
+const renderVNode = (vnode, parentIsSvg = false) => {
     // console.log('Creating', vnode);
     // if (typeof vnode.tag == 'function') {
     //     return createComponent()
@@ -163,12 +163,13 @@ const renderVNode = (vnode) => {
     } else {
         work = vnode
     }
-
     // console.log({ phase1: work });
 
     if (work.tag == '#text') {
         return work.el;
     }
+
+    let isSvg = work.tag == 'svg' || parentIsSvg;
 
     // console.log({ phase2: work });
 
@@ -192,7 +193,7 @@ const renderVNode = (vnode) => {
 
     // console.log({ phase3: work });
 
-    const el = document.createElement(work.tag);
+    const el = isSvg ? document.createElementNS('http://www.w3.org/2000/svg', work.tag) : document.createElement(work.tag);
 
     // console.log({ phase4: work });
 
@@ -201,7 +202,11 @@ const renderVNode = (vnode) => {
         if (key === 'key') setKey(value, work);
 
         if (key === 'class') {
-            el.className = Array.isArray(value) ? value.filter(Boolean).join(' ') : value;
+            if (isSvg) {
+                el.setAttribute('class', Array.isArray(value) ? value.filter(Boolean).join(' ') : value)
+            } else {
+                el.className = Array.isArray(value) ? value.filter(Boolean).join(' ') : value;
+            }
         } else if (key === 'style') {
             if (typeof value === 'string') {
                 el.style.cssText = value;
@@ -214,7 +219,6 @@ const renderVNode = (vnode) => {
         } else {
             el.setAttribute(key, value);
         }
-
     };
     // console.log({ phase5: work });
 
@@ -235,12 +239,12 @@ const renderVNode = (vnode) => {
 
         if (child.tag == '#fragment') {
             for (let frag of child.children) {
-                el.appendChild(renderVNode(frag));
+                el.appendChild(renderVNode(frag, isSvg));
             }
             continue;
         }
 
-        el.appendChild(renderVNode(child));
+        el.appendChild(renderVNode(child, isSvg));
     }
 
 
@@ -464,8 +468,8 @@ const handleComponent = (parent, old, newOne) => {
 
             if (old.compHooks > newOne.compHooks) {
                 forgot(old.compHooks)
-                // orphan(old.compHooks)
-                allocate(old.compHooks - newOne.compHooks)
+                orphan(old.compHooks - newOne.compHooks)
+                // allocate(old.compHooks - newOne.compHooks)
             } else if (old.compHooks < newOne.compHooks) {
                 forgot(old.compHooks)
                 allocate(newOne.compHooks - old.compHooks)
@@ -488,7 +492,8 @@ const handleComponent = (parent, old, newOne) => {
             return patchComponent(parent, old, newOne)
         }
     } else if (old?.isComp && !newOne?.isComp) {
-        orphan(newOne.compHooks - 1)
+        forgot(old.compHooks)
+        orphan(old.compHooks - 1)
         cleanupVNode(old.vdom)
 
         newOne.el = renderVNode(newOne)
@@ -632,6 +637,15 @@ const patch = (parent, oldNode, newNode) => {
         return newNode;
     }
 
+    if (newNode.tag === 'svg') {
+        cleanupVNode(oldNode);
+
+        const el = renderVNode(newNode, true);
+        parent.replaceChild(el, oldNode.el);
+        newNode.el = el;
+        return newNode;
+    }
+
     // console.log(oldNode, newNode);
     // console.log(parent,oldNode, newNode, "this?");
 
@@ -699,6 +713,12 @@ const getTarget = (t, scope = document) => {
     return target;
 };
 
+let customVdom = {}
+
+const registerCustomVdom = (tag, resolver) => {
+    customVdom[tag] = resolver
+}
+
 const html = new Proxy({}, {
     get: (_, tag) => {
         const actions = {
@@ -714,12 +734,21 @@ const html = new Proxy({}, {
             },
             vdom: RenderVDOM,
             _: __,
-            $: (...children) => ({ tag: '#fragment', children: flattenChildren(children) })
+            $: (...children) => ({ tag: '#fragment', children: flattenChildren(children) }),
+            ...customVdom
         };
 
-        return actions[tag] || ((props = {}, ...children) =>
-            createVNode(tag, props, children));
+
+        return actions[tag] || customVdom[tag] || ((props = {}, ...children) => {
+            if (typeof props == 'string') {
+                return createVNode(tag, {}, [props])
+            } else if (Array.isArray(props)) {
+                return createVNode(tag, {}, props)
+            } else {
+                return createVNode(tag, props, children)
+            }
+        });
     }
 });
 
-export { html, getTarget, getKey, updateProps, createVNode, renderVNode, cleanupVNode, RenderVDOM, patch };
+export { html, getTarget, getKey, updateProps, createVNode, renderVNode, cleanupVNode, RenderVDOM, patch, registerCustomVdom };

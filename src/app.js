@@ -1,6 +1,6 @@
 // App.js
-import { html } from "../core/vdom.js";
-import { comp, useState } from "../core/vdom.hooks.js";
+import { html } from "../DSL-DOM/core/vdom.js";
+import { comp, useState } from "../DSL-DOM/core/vdom.hooks.js";
 import Router from "../router/index.js";
 import compB from "./components/compB.js";
 

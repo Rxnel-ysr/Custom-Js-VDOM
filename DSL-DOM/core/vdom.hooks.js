@@ -35,6 +35,9 @@ const forgot = (n = 1) => {
 };
 
 const resetPreview = () => {
+    if (previewComponent) {
+        previewComponent = headPreview
+    }
     let current = headPreview
 
     while (current?.next) {
@@ -55,12 +58,14 @@ const trailMaker = (n = 1) => {
 
 const allocate = (n) => {
     let start = currentComponent.hookNode
+    let actual = n - 1;
     // delete start.value
     // console.log("allocated", start);
-    let [head, tail] = trailMaker(n - 1)
-
-    tail.next = start.next
-    start.next = head
+    if (actual > -1) {
+        let [head, tail] = trailMaker(actual)
+        tail.next = start.next
+        start.next = head
+    }
     // console.log("allocated end", start);
 }
 
@@ -339,28 +344,33 @@ function createRoot(fn, target, id = 'default') {
         renderFn: fn,
         setRenderFn: (fn) => comp.renderFn = fn,
         rerender: () => {
-            currentComponent = comp;
-            previewComponent = comp;
-            resetContext();
-            resetPreview();
+            try {
 
-            console.log(comp);
-            const newVNode = comp.renderFn();
-            // console.log('Head preview',headPreview)
-
-            if (!comp.vdom) {
-                comp.vdom = RenderVDOM.render(newVNode, comp.target);
-                // console.log({ thisisvdom: comp.vdom, newVNode });
-            } else {
-                // console.log({ beforeUpdate: comp.vdom, newVNode });
-                // console.log(currentComponent)
-                comp.vdom = RenderVDOM.update(comp.target, comp.vdom, newVNode);
-                // console.log(currentComponent)
-                // console.log({ After: comp.vdom });   
+                currentComponent = comp;
+                previewComponent = comp;
+                resetContext();
+                resetPreview();
 
                 // console.log(comp);
+                const newVNode = comp.renderFn();
+                // console.log('Head preview',headPreview)
+
+                if (!comp.vdom) {
+                    comp.vdom = RenderVDOM.render(newVNode, comp.target);
+                    // console.log({ thisisvdom: comp.vdom, newVNode });
+                } else {
+                    // console.log(comp.vdom)
+                    // console.log({ beforeUpdate: comp.vdom, newVNode });
+                    comp.vdom = RenderVDOM.update(comp.target, comp.vdom, newVNode);
+                    // console.log(currentComponent)
+                    // console.log({ After: comp.vdom });   
+
+                    // console.log(comp);
+                }
+                setHooks(id, comp.hooks);
+            } catch (error) {
+                console.error(error)
             }
-            setHooks(id, comp.hooks);
         }
     };
     comp.rerender();

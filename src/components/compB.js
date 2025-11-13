@@ -1,5 +1,5 @@
-import { useState } from "../../core/vdom.hooks.js"
-import { html } from "../../core/vdom.js"
+import { useState } from "../../DSL-DOM/core/vdom.hooks.js"
+import { html } from "../../DSL-DOM/core/vdom.js"
 
 
 const compB = () => {
