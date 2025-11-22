@@ -1,4 +1,5 @@
 // ws-server.js
+"use strict";
 import http from 'http';
 import crypto from 'crypto';
 

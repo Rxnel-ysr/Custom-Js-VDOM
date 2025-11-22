@@ -1,4 +1,5 @@
 // native-ws-server.js
+"use strict";
 import http from 'http';
 import fs from 'fs/promises';
 import path from 'path';
@@ -33,6 +34,7 @@ const binary = [
 
 const coreFiles = [
     'main.js',
+    'vdom.js',
     'vdom.js',
     'vdom.hooks.js',
     'state.js'
@@ -70,6 +72,10 @@ if (env.hmr) {
             path: relativePath,
             timestamp: Date.now()
         });
+    }, {
+        ignore: [
+            '.git/'
+        ]
     });
 }
 const hasExtension = (url) => /\.[^/]+$/.test(url)
@@ -99,10 +105,21 @@ const server = http.createServer(async (req, res) => {
         // console.log(content);
 
         res.setHeader('Content-Type', type);
-        res.setHeader('Cache-Control', 'no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        // console.log("triggered", type);
+        // res.setHeader('Cache-Control', 'no-store, must-revalidate');
+        // res.setHeader('Pragma', 'no-cache');
+        // res.setHeader('Expires', '0');
+        // Static asset caching policy
+        if (binary.includes(ext)) {
+            // images => long cache + immutable
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        else if (ext === '.js' && !coreFiles.includes(basename)) {
+            res.setHeader('Cache-Control', 'no-cache');
+        }
+        else {
+            res.setHeader('Cache-Control', 'no-store');
+        }
+
         if (ext === '.js' && !coreFiles.includes(basename)) {
             content = transformImports(content, fullPath);
         }

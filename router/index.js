@@ -8,16 +8,10 @@ const appRouter = create({
     ]
 })
 
-const scrollToHash = (hash) => {
-    const el = document.querySelector(hash);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    history.replaceState(null, '', hash);
-};
-
 registerCustomVdom('routerLink', (props = {}, ...children) => {
-    let destination = props?.to
-    let scroll = props?.scrollTo
+    let destination = props?.to || ''
+    let scroll = props?.scrollTo || ''
+    let finalDestination = props.href = `${destination}${scroll}`
 
     delete props.to
     delete props.scrollTo
@@ -25,11 +19,23 @@ registerCustomVdom('routerLink', (props = {}, ...children) => {
     return createVNode('a', {
         ...props, onclick: (e) => {
             e.preventDefault()
+            let current = currentUri()
+            // console.log("hm");
+
             if (destination) {
-                appRouter.go(destination);
+                // console.log("hm a");
+                appRouter.go(finalDestination);
             }
+            // console.log(to.lastIndexOf('#'));
             if (scroll) {
-                scrollToHash(scroll);
+                if (current === destination) {
+                    appRouter.scrollToHash(scroll);
+                } else {
+                    pushJob(() => {
+                        // console.log("hm b");
+                        appRouter.scrollToHash(scroll);
+                    })
+                }
             }
         }
     }, children)

@@ -1,3 +1,4 @@
+"use strict";
 const StateCache = new Map();
 
 export function getHooks(id) {

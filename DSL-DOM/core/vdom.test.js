@@ -1,11 +1,15 @@
 "use strict";
 import { allocate, forgot, orphan } from "./vdom.hooks.js";
 
-let jobs = []
 const _keys = {};
+const getKeyVal = key => _keys[key] ?? null
 const getKey = vnode => vnode?.props?.key ?? null;
 const hasKey = vnode => vnode && typeof vnode.props?.key !== 'undefined';
 const setKey = (key, vnode) => _keys[key] = vnode.el
+
+// Enhanced job system with DOM operations
+let jobs = []
+let domOperations = []
 
 /**
  * 
@@ -15,11 +19,33 @@ const pushJob = (fn) => {
     jobs.push(fn)
 }
 
+/**
+ * Queue DOM manipulation for later execution
+ * @param {Function} operation 
+ */
+const queueDOMOperation = (operation) => {
+    domOperations.push(operation)
+}
+
 const executeJobs = () => {
     for (const job of jobs) job()
     jobs = []
 }
 
+const executeDOMOperations = () => {
+    for (const operation of domOperations) operation()
+    domOperations = []
+}
+
+const executePendingWork = () => requestAnimationFrame(() => {
+    executeJobs()
+    executeDOMOperations()
+})
+
+const flushJobs = () => {
+    jobs = []
+    domOperations = []
+}
 
 const flattenChildren = (children) =>
     children.flat(Infinity).filter(c => c !== false && c !== null && c !== undefined);
@@ -46,10 +72,8 @@ function wrapPrimitive(node) {
     return node;
 }
 
-
 function cleanupVNode(node) {
     if (!node || typeof node !== 'object') return;
-
 
     const el = node.el;
 
@@ -64,12 +88,10 @@ function cleanupVNode(node) {
     }
 
     if (typeof node.props?.useCleanup === 'function') {
-
-
         try {
             node.props.useCleanup(node.el);
         } catch (e) {
-
+            // Silent cleanup
         }
     }
 
@@ -87,57 +109,66 @@ function cleanupVNode(node) {
 
 const updateProps = (el, oldProps, newProps) => {
     const allProps = { ...oldProps, ...newProps };
+    const propUpdates = [];
 
     for (const key in allProps) {
         const oldValue = oldProps[key];
         const newValue = newProps[key];
 
-
         if (key === 'useCleanup' && (typeof oldValue === 'function' || typeof newValue == 'function')) {
-            continue
-        };
+            continue;
+        }
 
         if (newValue === undefined) {
-            if (key === 'class') {
-                // el.className = '';
-                el.setAttribute('classname', null);
-            } else if (key === 'style') {
-                el.style.cssText = '';
-            } else if (key.startsWith('on') && typeof oldValue === 'function') {
-                el.removeEventListener(key.slice(2).toLowerCase(), oldValue);
-            } else {
-                el.removeAttribute(key);
-            }
-        } else if (oldValue !== newValue) {
-            if (key === 'class') {
-                el.setAttribute('class', Array.isArray(newValue)
-                    ? newValue.filter(Boolean).join(' ')
-                    : newValue)
-            } else if (key === 'style') {
-                if (typeof newValue === 'string') {
-                    el.style.cssText = newValue;
+            propUpdates.push(() => {
+                if (key === 'class') {
+                    el.className = '';
+                } else if (key === 'style') {
+                    el.style.cssText = '';
+                } else if (key.startsWith('on') && typeof oldValue === 'function') {
+                    el.removeEventListener(key.slice(2).toLowerCase(), oldValue);
                 } else {
-                    for (const style in oldValue || {}) {
-                        if (!newValue || newValue[style] === undefined) {
-                            el.style[style] = '';
-                        }
-                    }
-                    Object.assign(el.style, newValue);
+                    el.removeAttribute(key);
                 }
-            } else if (key.startsWith('on') && typeof newValue === 'function') {
-                if (oldValue) el.removeEventListener(key.slice(2).toLowerCase(), oldValue);
-                el.addEventListener(key.slice(2).toLowerCase(), newValue);
-            } else {
-                el.setAttribute(key, newValue);
-            }
+            });
+        } else if (oldValue !== newValue) {
+            propUpdates.push(() => {
+                if (key === 'class') {
+                    el.className = Array.isArray(newValue)
+                        ? newValue.filter(Boolean).join(' ')
+                        : newValue;
+                } else if (key === 'style') {
+                    if (typeof newValue === 'string') {
+                        el.style.cssText = newValue;
+                    } else {
+                        for (const style in oldValue || {}) {
+                            if (!newValue || newValue[style] === undefined) {
+                                el.style[style] = '';
+                            }
+                        }
+                        Object.assign(el.style, newValue);
+                    }
+                } else if (key.startsWith('on') && typeof newValue === 'function') {
+                    if (oldValue) el.removeEventListener(key.slice(2).toLowerCase(), oldValue);
+                    el.addEventListener(key.slice(2).toLowerCase(), newValue);
+                } else {
+                    el.setAttribute(key, newValue);
+                }
+            });
         }
     }
+
+    // Queue all prop updates for later execution
+    if (propUpdates.length > 0) {
+        queueDOMOperation(() => {
+            for (const update of propUpdates) update();
+        });
+    }
+
     return newProps;
 };
 
-
 const renderVNode = (vnode, parentIsSvg = false) => {
-
     let work;
     if (vnode.isComp) {
         work = vnode.vdom = vnode.render()
@@ -151,7 +182,6 @@ const renderVNode = (vnode, parentIsSvg = false) => {
 
     let isSvg = work.tag == 'svg' || parentIsSvg;
 
-
     if (work.tag === '#fragment') {
         const start = document.createComment('fragment-start');
         const end = document.createComment('fragment-end');
@@ -160,82 +190,99 @@ const renderVNode = (vnode, parentIsSvg = false) => {
         work.el = start;
         work._end = end;
 
-        frag.appendChild(start);
-        for (let child of work.children || []) {
-            const el = renderVNode(child);
-            if (el) frag.appendChild(el);
-        }
-        frag.appendChild(end);
+        queueDOMOperation(() => {
+            frag.appendChild(start);
+            for (let child of work.children || []) {
+                const el = renderVNode(child);
+                if (el) frag.appendChild(el);
+            }
+            frag.appendChild(end);
+        });
 
         return frag;
     }
 
-
     const el = isSvg ? document.createElementNS('http://www.w3.org/2000/svg', work.tag) : document.createElement(work.tag);
 
-
+    const attributeOperations = [];
     for (const [key, value] of Object.entries(work.props)) {
         if (key === 'useCleanup' && typeof value === 'function') continue;
         if (key === 'key') setKey(value, work);
 
-        if (key === 'class') {
-            if (isSvg) {
-                el.setAttribute('class', Array.isArray(value) ? value.filter(Boolean).join(' ') : value)
+        attributeOperations.push(() => {
+            if (key === 'class') {
+                if (isSvg) {
+                    el.setAttribute('class', Array.isArray(value) ? value.filter(Boolean).join(' ') : value)
+                } else {
+                    el.className = Array.isArray(value) ? value.filter(Boolean).join(' ') : value;
+                }
+            } else if (key === 'style') {
+                if (typeof value === 'string') {
+                    el.style.cssText = value;
+                } else {
+                    Object.assign(el.style, value);
+                }
+            } else if (key.startsWith('on') && typeof value === 'function') {
+                el.addEventListener(key.slice(2).toLowerCase(), value);
             } else {
-                el.className = Array.isArray(value) ? value.filter(Boolean).join(' ') : value;
+                el.setAttribute(key, value);
             }
-        } else if (key === 'style') {
-            if (typeof value === 'string') {
-                el.style.cssText = value;
-            } else {
-                Object.assign(el.style, value);
-            }
-        } else if (key.startsWith('on') && typeof value === 'function') {
-            el.addEventListener(key.slice(2).toLowerCase(), value);
+        });
+    }
 
-        } else {
-            el.setAttribute(key, value);
-        }
-    };
+    // Queue attribute operations
+    if (attributeOperations.length > 0) {
+        queueDOMOperation(() => {
+            for (const op of attributeOperations) op();
+        });
+    }
 
     if (work.props.shadow) {
-        const shadow = el.attachShadow({
-            mode: work.props.shadow === true ? 'open' : work.props.shadow
+        queueDOMOperation(() => {
+            const shadow = el.attachShadow({
+                mode: work.props.shadow === true ? 'open' : work.props.shadow
+            });
+            el._shadow = shadow;
         });
-        el._shadow = shadow;
     }
 
     const children = Array.isArray(work.children) ? work.children : [work.children];
+    const childOperations = [];
 
     for (let child of children) {
-        if (
-            child === null || child === undefined ||
-            typeof child === 'boolean'
-        ) continue;
+        if (child === null || child === undefined || typeof child === 'boolean') continue;
 
         if (child.tag == '#fragment') {
             for (let frag of child.children) {
-                el.appendChild(renderVNode(frag, isSvg));
+                childOperations.push(() => {
+                    el.appendChild(renderVNode(frag, isSvg));
+                });
             }
             continue;
         }
-
-        el.appendChild(renderVNode(child, isSvg));
+        childOperations.push(() => {
+            el.appendChild(renderVNode(child, isSvg));
+        });
     }
 
+    // Queue child operations
+    if (childOperations.length > 0) {
+        queueDOMOperation(() => {
+            for (const op of childOperations) op();
+        });
+    }
 
     work.el = el;
-
     return el;
 }
 
 const patchChildrenWithKeys = (parent, oldChildren, newChildren) => {
-
     const oldKeyMap = new Map();
     oldChildren.forEach((vnode) => oldKeyMap.set(vnode.props.key, vnode));
 
     const newKeySet = new Set();
     const updatedChildren = [];
+    const domOperations = [];
 
     newChildren.forEach((newVNode, i) => {
         const key = newVNode.props.key;
@@ -243,9 +290,7 @@ const patchChildrenWithKeys = (parent, oldChildren, newChildren) => {
 
         const oldVNode = oldKeyMap.get(key);
         if (oldVNode) {
-
-
-            updateProps(oldVNode.el, oldVNode.props, newVNode.props)
+            updateProps(oldVNode.el, oldVNode.props, newVNode.props);
 
             const oldChildren = oldVNode.children || [];
             const newChildren = newVNode.children || [];
@@ -261,32 +306,42 @@ const patchChildrenWithKeys = (parent, oldChildren, newChildren) => {
                 );
             }
 
-
             newVNode.el = oldVNode.el;
-
             updatedChildren.push(newVNode);
         } else {
             const el = renderVNode(newVNode);
             newVNode.el = el;
-            parent.insertBefore(el, parent.children[i] || null);
+            domOperations.push(() => {
+                parent.insertBefore(el, parent.children[i] || null);
+            });
             updatedChildren.push(newVNode);
         }
     });
 
+    // Queue removal operations
     oldChildren.forEach((oldVNode) => {
         if (!newKeySet.has(oldVNode.props.key)) {
-            cleanupVNode(oldVNode)
-            parent.removeChild(oldVNode.el);
+            domOperations.push(() => {
+                cleanupVNode(oldVNode);
+                parent.removeChild(oldVNode.el);
+            });
         }
     });
 
+    // Queue reordering operations
     updatedChildren.forEach((vnode, i) => {
         const current = parent.children[i];
         if (vnode.el !== current) {
-            parent.insertBefore(vnode.el, current);
+            domOperations.push(() => {
+                parent.insertBefore(vnode.el, current);
+            });
         }
     });
 
+    // Execute all DOM operations
+    queueDOMOperation(() => {
+        for (const op of domOperations) op();
+    });
 
     return updatedChildren;
 };
@@ -295,164 +350,148 @@ const handleComponent = (parent, old, newOne) => {
     if (old?.isComp && newOne?.isComp) {
         if (old.stringified !== newOne.stringified) {
             if (old.compHooks > newOne.compHooks) {
-                forgot(old.compHooks)
-                orphan(old.compHooks - newOne.compHooks)
-
+                forgot(old.compHooks);
+                orphan(old.compHooks - newOne.compHooks);
             } else if (old.compHooks < newOne.compHooks) {
-                forgot(old.compHooks)
-                allocate(newOne.compHooks - old.compHooks)
-
+                forgot(old.compHooks);
+                allocate(newOne.compHooks - old.compHooks);
             } else {
-                forgot(old.compHooks)
+                forgot(old.compHooks);
             }
-
         }
 
-        newOne.vdom = patch(parent, old.vdom, newOne.render(), true)
-        return newOne
-
+        newOne.vdom = patch(parent, old.vdom, newOne.render(), true);
+        return newOne;
     } else if (old?.isComp && !newOne?.isComp) {
-        forgot(old.compHooks)
-        orphan(old.compHooks - 1)
-        // cleanupVNode(old.vdom)
-
-        return patch(parent, old.vdom, newOne, true)
+        forgot(old.compHooks);
+        orphan(old.compHooks - 1);
+        return patch(parent, old.vdom, newOne, true);
     } else if (!old?.isComp && newOne?.isComp) {
-        allocate(newOne.compHooks - 1)
-        // cleanupVNode(old)
-
-        newOne.vdom = patch(parent, old, newOne.render(), true)
-        return newOne
+        allocate(newOne.compHooks - 1);
+        newOne.vdom = patch(parent, old, newOne.render(), true);
+        return newOne;
     }
-
-
-}
+};
 
 const patch = (parent, oldNode, newNode, skip = false) => {
-
     if (oldNode == null && newNode == null) return null;
 
-
-    if (
-        !skip && (
-            oldNode?.isComp && newNode?.isComp ||
-            oldNode?.isComp && !newNode?.isComp ||
-            !oldNode?.isComp && newNode?.isComp)
+    if (!skip && (
+        oldNode?.isComp && newNode?.isComp ||
+        oldNode?.isComp && !newNode?.isComp ||
+        !oldNode?.isComp && newNode?.isComp)
     ) {
         return handleComponent(parent, oldNode, newNode);
     }
-    // if (newNode.tag == 'button' && newNode.props?.title == 'Toggle Tema') {
-    //     console.log(parent, oldNode, newNode)
-    // }
 
-
-    // console.log("Patch 1", {parent,oldNode,newNode})
     if (newNode == null) {
-        if (oldNode?.el) {
-            cleanupVNode(oldNode)
-            parent.removeChild(oldNode.el);
-        }
+        queueDOMOperation(() => {
+            if (oldNode?.el) {
+                cleanupVNode(oldNode);
+                parent.removeChild(oldNode.el);
+            }
+        });
         return null;
     }
 
-    // console.log("Patch 2", { parent, oldNode, newNode })
     if (newNode.tag === '#text') {
-        if (oldNode.tag === '#text') {
-            const oldText = oldNode.children?.[0];
-            const newText = newNode.children?.[0];
+        if (oldNode?.tag === '#text') {
+            queueDOMOperation(() => {
+                const oldText = oldNode.children?.[0];
+                const newText = newNode.children?.[0];
+                if (oldText !== newText && oldNode.el) {
+                    oldNode.el.nodeValue = newText;
+                }
+                newNode.el = oldNode?.el;
+            });
+            return newNode;
+        }
 
-            if (oldText !== newText && oldNode.el) {
-                oldNode.el.nodeValue = newText;
+        queueDOMOperation(() => {
+            const newEl = renderVNode(newNode);
+            if (oldNode?.el) {
+                parent.replaceChild(newEl, oldNode.el);
+            } else {
+                parent.appendChild(newEl);
             }
-            newNode.el = oldNode?.el;
-            return newNode;
-        }
-
-        const newEl = renderVNode(newNode);
-        if (oldNode.el) {
-            parent.replaceChild(newEl, oldNode.el);
-        } else {
-            parent.appendChild(newEl);
-        }
-
-        newNode.el = newEl;
+            newNode.el = newEl;
+        });
         return newNode;
     }
 
-    // console.log("Patch 3", { parent, oldNode, newNode })
     if (oldNode?.tag === '#fragment' && newNode.tag !== '#fragment') {
-        let node = oldNode.el;
-        const end = oldNode._end;
+        queueDOMOperation(() => {
+            let node = oldNode.el;
+            const end = oldNode._end;
 
-        if (end == undefined) {
-            return;
-        }
+            if (end == undefined) return;
 
-        while (node && node !== end) {
-            const next = node.nextSibling;
-            parent.removeChild(node);
-            node = next;
-        }
+            while (node && node !== end) {
+                const next = node.nextSibling;
+                parent.removeChild(node);
+                node = next;
+            }
 
-        const newEl = renderVNode(newNode)
-        parent.replaceChild(newEl, oldNode._end)
-        newNode.el = newEl;
+            const newEl = renderVNode(newNode);
+            parent.replaceChild(newEl, oldNode._end);
+            newNode.el = newEl;
+        });
         return newNode;
-
     }
 
-    // console.log("Patch 4", { parent, oldNode, newNode })
     if (oldNode == null) {
-        const el = renderVNode(newNode);
-        parent.appendChild(el);
-        newNode.el = el;
-
+        queueDOMOperation(() => {
+            const el = renderVNode(newNode);
+            parent.appendChild(el);
+            newNode.el = el;
+        });
         return newNode;
     }
 
-    // console.log("Patch 5", { parent, oldNode, newNode })
     if (oldNode?.tag !== newNode?.tag) {
-        cleanupVNode(oldNode);
+        queueDOMOperation(() => {
+            cleanupVNode(oldNode);
 
-        if (newNode.tag === '#fragment') {
-            const frag = renderVNode(newNode)
-            parent.replaceChild(frag, oldNode.el);
-            return newNode;
-        }
+            if (newNode.tag === '#fragment') {
+                const frag = renderVNode(newNode);
+                parent.replaceChild(frag, oldNode.el);
+                return newNode;
+            }
 
-        const el = renderVNode(newNode);
-        parent.replaceChild(el, oldNode.el);
-        newNode.el = el;
+            const el = renderVNode(newNode);
+            parent.replaceChild(el, oldNode.el);
+            newNode.el = el;
+        });
         return newNode;
     }
 
-    // console.log("Patch 6", { parent, oldNode, newNode })
     if (newNode.tag === 'svg') {
-        cleanupVNode(oldNode);
-
-        const el = renderVNode(newNode, true);
-        parent.replaceChild(el, oldNode.el);
-        newNode.el = el;
+        queueDOMOperation(() => {
+            cleanupVNode(oldNode);
+            const el = renderVNode(newNode, true);
+            parent.replaceChild(el, oldNode.el);
+            newNode.el = el;
+        });
         return newNode;
     }
 
-    // console.log("Entering update...", { parent, oldNode, newNode })
+    // Update props (this queues DOM operations internally)
     updateProps(oldNode.el, (oldNode.props || {}), (newNode.props || {}));
 
-    if (
-        newNode.tag === 'input' &&
+    if (newNode.tag === 'input' &&
         newNode.props?.value !== undefined &&
         oldNode.el.value !== newNode.props.value
     ) {
-        oldNode.el.value = newNode.props.value;
+        queueDOMOperation(() => {
+            oldNode.el.value = newNode.props.value;
+        });
     }
 
     const oldChildren = oldNode.children || [];
     const newChildren = newNode.children || [];
+
     if (oldChildren.some(node => hasKey(node)) && newChildren.some(node => hasKey(node))) {
-
-        patchChildrenWithKeys(oldNode.el, oldChildren, newChildren)
-
+        patchChildrenWithKeys(oldNode.el, oldChildren, newChildren);
     } else {
         const max = Math.max(oldChildren.length, newChildren.length);
         for (let i = 0; i < max; i++) {
@@ -460,7 +499,6 @@ const patch = (parent, oldNode, newNode, skip = false) => {
                 oldNode?.tag === '#fragment' ? parent : oldNode.el,
                 oldChildren[i],
                 newChildren[i],
-
             );
         }
     }
@@ -471,7 +509,6 @@ const patch = (parent, oldNode, newNode, skip = false) => {
     newNode.el = oldNode.el;
     return newNode;
 };
-
 
 const RenderVDOM = {
     createVNode,
@@ -500,11 +537,11 @@ const getTarget = (t, scope = document) => {
     return target;
 };
 
-let customVdom = {}
+let customVdom = {};
 
 const registerCustomVdom = (tag, resolver) => {
-    customVdom[tag] = resolver
-}
+    customVdom[tag] = resolver;
+};
 
 const html = new Proxy({}, {
     get: (_, tag) => {
@@ -525,17 +562,21 @@ const html = new Proxy({}, {
             ...customVdom
         };
 
-
         return actions[tag] || customVdom[tag] || ((props = {}, ...children) => {
             if (typeof props == 'string') {
-                return createVNode(tag, {}, [props])
+                return createVNode(tag, {}, [props]);
             } else if (Array.isArray(props)) {
-                return createVNode(tag, {}, props)
+                return createVNode(tag, {}, props);
             } else {
-                return createVNode(tag, props, children)
+                return createVNode(tag, props, children);
             }
         });
     }
 });
 
-export { html, getTarget, getKey, updateProps, createVNode, renderVNode, cleanupVNode, RenderVDOM, patch, registerCustomVdom, pushJob, executeJobs };
+export {
+    html, getTarget, getKey, updateProps, createVNode,
+    renderVNode, cleanupVNode, RenderVDOM, patch,
+    registerCustomVdom, executePendingWork as executePendingJobs,
+    flushJobs, queueDOMOperation
+};

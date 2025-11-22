@@ -1,20 +1,22 @@
+"use strict";
 import { getHooks, setHooks } from './state.js';
-import { RenderVDOM, getTarget } from './vdom.js';
+import { RenderVDOM, executeJobs, getTarget } from './vdom.js';
 
 let currentComponent = null,
-    previewComponent = null,
-    headPreview = previewComponent,
-    regression = false
+    previewNode = { next: null },
+    headPreview = previewNode,
+    regression = false,
+    handler = null;
 
 const resetContext = () => {
     currentComponent.hookNode = currentComponent.hooks;
 };
 
 const triggerRerender = () => {
-    if (currentComponent) currentComponent.rerender()
-}
+    if (handler) handler();
+};
 
-const setRegression = (bool) => regression = bool
+const setRegression = (bool) => regression = bool;
 
 /**
  * Forgets the next n states in the hook chain
@@ -26,100 +28,62 @@ const forgot = (n = 1) => {
     let hookNode = currentComponent.hookNode;
     if (!hookNode) return;
 
-    // console.log(hookNode, 'Lo');
+
     for (let i = 1; i <= n && hookNode.next; i++) {
-        delete hookNode.value
+        delete hookNode?.value;
         hookNode = hookNode.next;
     }
-    // currentComponent.hookNode = hookNode;
+
 };
 
 const resetPreview = () => {
-    if (previewComponent) {
-        previewComponent = headPreview
+    if (previewNode) {
+        previewNode = headPreview;
     }
-    let current = headPreview
+    let current = headPreview;
 
     while (current?.next) {
-        current.value = undefined
-        current = current.next
+        current.value = undefined;
+        current = current.next;
     }
-}
+};
 
 const trailMaker = (n = 1) => {
-    let head = { next: null }
-    let node = head
+    let head = { next: null };
+    let node = head;
     for (let i = 1; i <= n; i++) {
-        node = node.next = { next: null }
+        node = node.next = { next: null };
     }
 
-    return [head, node]
-}
+    return [head, node];
+};
 
 const allocate = (n) => {
-    let start = currentComponent.hookNode
+    let start = currentComponent.hookNode;
     let actual = n - 1;
-    // delete start.value
-    // console.log("allocated", start);
+
+
     if (actual > -1) {
-        let [head, tail] = trailMaker(actual)
-        tail.next = start.next
-        start.next = head
+        let [head, tail] = trailMaker(actual);
+        tail.next = start.next;
+        start.next = head;
     }
-    // console.log("allocated end", start);
-}
+
+};
 
 const orphan = (n) => {
-    let start = currentComponent.hookNode
-    // delete start.value
+    let start = currentComponent.hookNode;
 
-    let end = start
-    // console.log("orphaned", start);
+    let end = start;
+
 
     for (let i = 1; i <= n; i++) {
-        end = end.next = end.next
+        end = end.next = end.next;
     }
 
-    start.next = end?.next || null
-
-    // console.log("orphaned end", start);
-}
-
-const manageComponent = (compA, compB) => {
-    let current = currentComponent.hookNode;
-    // console.log("managed", current);
-
-    if (compA.compHooks > compB.compHooks || compA.compHooks < compB.compHooks) {
-        forgot(compA.compHooks)
-
-        let n = 0, expected = current;
-
-        while (n < compA.compHooks && expected) {
-            expected = expected.next
-            n++
-        }
-
-        let [start, obj] = trailMaker(compB.compHooks)
+    start.next = end?.next || null;
 
 
-        while (n < compB.compHooks) {
-            obj = obj.next = obj.next || { next: null }
-            n++
-        }
-
-        let nextExpected = expected.next = expected.next || { next: null }
-        obj.next = nextExpected
-        current.next = start
-        return compA
-    } else if (compA.compHooks == compB.compHooks) {
-        if (compA.stringified !== compB.stringified) {
-            forgot(compA.compHooks)
-        }
-
-        return compA
-    }
-
-    return compA.vdom
 };
 
 const retainData = (nChild, vdom) => {
@@ -136,7 +100,7 @@ const retainData = (nChild, vdom) => {
 
     let current = hookNode.next;
     while (n < nChild && current) {
-        hookNode.retained.data[key].push(current.value);
+        hookNode.retained.data[key].push(current?.value);
         current = current.next;
         n++;
     }
@@ -159,18 +123,16 @@ const retainData = (nChild, vdom) => {
  * }} Object containing information of the componennt.
  */
 const comp = (compFn, args = {}) => {
-    if (!previewComponent) return;
-    // console.log(snapshot);
 
-    const previewHook = previewComponent.previewHookNode;
-    if (!previewHook) return;
-    regression = true
+
+    const previewHook = previewNode;
+    regression = true;
 
     const vdom = compFn(args);
 
-    regression = false
-    const nextExpectedNode = previewComponent.previewHookNode;
-    // console.log(snapshot);
+    regression = false;
+    const nextExpectedNode = previewNode;
+
 
     let current = previewHook;
     let counter = 0;
@@ -180,7 +142,7 @@ const comp = (compFn, args = {}) => {
         counter++;
     }
 
-    let ok = {
+    return {
         render: () => compFn(args),
         compHooks: counter,
         prev: previewHook,
@@ -189,8 +151,6 @@ const comp = (compFn, args = {}) => {
         stringified: JSON.stringify(vdom),
         isComp: true
     };
-    // console.log(ok);
-    return ok;
 };
 
 
@@ -203,10 +163,10 @@ const destroy = () => {
     let hookNode = currentComponent.hookNode;
     if (!hookNode) return;
 
-    // Clear all remaining hooks
+
     while (hookNode.next) {
         hookNode.value = undefined;
-        // console.log(hookNode);
+
         hookNode = hookNode.next;
     }
     currentComponent.hookNode = hookNode;
@@ -220,95 +180,97 @@ const destroy = () => {
  * @returns {[T, (val: T | ((prev: T) => T)) => void]} A tuple: current state and a setter function.
  */
 const useState = (initial) => {
-    // console.log("claeed");
 
-    let hookNode = regression ? previewComponent.previewHookNode : currentComponent.hookNode;
-    // console.log(hookNode)
 
-    if (typeof hookNode.value === 'undefined') {
+    let hookNode = regression ? previewNode : currentComponent.hookNode;
+
+
+    if (typeof hookNode?.value === 'undefined') {
         hookNode.value = initial;
     }
-    // console.log(hookNode)
+
 
     const set = val => {
-        hookNode.value = typeof val == 'function' ? val(hookNode.value) : val;
-        // console.log('In regression', hookNode, val);
+        hookNode.value = typeof val == 'function' ? val(hookNode?.value) : val;
+
         if (!regression) {
+
+
             currentComponent.rerender();
-            // console.log('Called and arent regression',
-            //     hookNode,
-            //     val
-            // )
+
+
+
+
         }
     };
 
     if (regression) {
-        // console.log("Move ahead", hookNode.value);
-        previewComponent.previewHookNode = hookNode.next = hookNode.next || { next: null };
+
+        previewNode = hookNode.next = hookNode.next || { next: null };
 
     } else {
         currentComponent.hookNode = hookNode.next = hookNode.next || { next: null };
-        // console.log("Move ahead real", hookNode.value);
+
     }
 
-    // console.log(regression, [hookNode.value, set]);
 
 
-    return [hookNode.value, set];
+
+    return [hookNode?.value, set];
 };
 
 const useRef = (initial) => {
-    let hookNode = regression ? previewComponent.previewHookNode : currentComponent.hookNode;
+    let hookNode = regression ? previewNode : currentComponent.hookNode;
 
-    if (typeof hookNode.value === 'undefined') {
+    if (typeof hookNode?.value === 'undefined') {
         hookNode.value = { current: initial };
     }
 
     if (regression) {
-        previewComponent.previewHookNode = hookNode.next = hookNode.next || { next: null };
+        previewNode = hookNode.next = hookNode.next || { next: null };
     } else {
         currentComponent.hookNode = hookNode.next = hookNode.next || { next: null };
-    } return hookNode.value;
+    } return hookNode?.value;
 };
 
 const useEffect = (effect, deps) => {
-    let hookNode = regression ? previewComponent.previewHookNode : currentComponent.hookNode;
+    let hookNode = regression ? previewNode : currentComponent.hookNode;
     const hasNoDeps = !deps;
 
-    const oldHook = hookNode.value;
+    const oldHook = hookNode?.value;
     const hasChangedDeps = typeof oldHook !== 'undefined'
         ? !deps.every((dep, j) => Object.is(dep, oldHook.deps[j]))
         : true;
 
     if (hasNoDeps || hasChangedDeps) {
-        // Queue cleanup if exists
+
         if (oldHook?.cleanup) {
             queueMicrotask(() => {
                 oldHook.cleanup?.()
             });
         }
 
-        // Schedule new effect after render
+
         queueMicrotask(() => {
             const cleanup = effect();
             hookNode.value = { deps, cleanup };
         });
     } else {
-        // Keep old deps & cleanup
+
         hookNode.value = oldHook;
     }
 
     if (regression) {
-        previewComponent.previewHookNode = hookNode.next = hookNode.next || { next: null };
+        previewNode = hookNode.next = hookNode.next || { next: null };
     } else {
         currentComponent.hookNode = hookNode.next = hookNode.next || { next: null };
     }
 };
 
 const useMemo = (compute, deps) => {
-    let hookNode = regression ? previewComponent.previewHookNode : currentComponent.hookNode;
+    let hookNode = regression ? previewNode : currentComponent.hookNode;
 
-    const prev = hookNode.value;
+    const prev = hookNode?.value;
 
     const hasNoDeps = !deps;
     const hasChanged = prev
@@ -319,7 +281,7 @@ const useMemo = (compute, deps) => {
         const value = compute();
         hookNode.value = { value, deps };
         if (regression) {
-            previewComponent.previewHookNode = hookNode.next = hookNode.next || { next: null };
+            previewNode = hookNode.next = hookNode.next || { next: null };
         } else {
             currentComponent.hookNode = hookNode.next = hookNode.next || { next: null };
         }
@@ -327,61 +289,81 @@ const useMemo = (compute, deps) => {
     }
 
     if (regression) {
-        previewComponent.previewHookNode = hookNode.next = hookNode.next || { next: null };
+        previewNode = hookNode.next = hookNode.next || { next: null };
     } else {
         currentComponent.hookNode = hookNode.next = hookNode.next || { next: null };
     }
     return prev.value;
 };
 
+function onReady(cb) {
+    while (true) {
+        if (document.readyState == 'complete') {
+            setTimeout(() => {
+                cb()
+            }, 300);
+            break;
+        }
+    }
+}
+
+
 function createRoot(fn, target, id = 'default') {
+
+
     const comp = {
         hooks: { next: null, ...getHooks(id) },
-        previewHookNode: { next: null },
         hookNode: null,
         vdom: null,
         target: getTarget(target),
         renderFn: fn,
         setRenderFn: (fn) => comp.renderFn = fn,
         rerender: () => {
-            try {
+            requestAnimationFrame(() => {
 
-                currentComponent = comp;
-                previewComponent = comp;
-                resetContext();
-                resetPreview();
+                try {
+                    handler = comp.rerender;
+                    currentComponent = comp;
+                    resetContext();
+                    resetPreview();
 
-                // console.log(comp);
-                const newVNode = comp.renderFn();
-                // console.log('Head preview',headPreview)
 
-                if (!comp.vdom) {
-                    comp.vdom = RenderVDOM.render(newVNode, comp.target);
-                    // console.log({ thisisvdom: comp.vdom, newVNode });
-                } else {
-                    // console.log(comp.vdom)
-                    // console.log({ beforeUpdate: comp.vdom, newVNode });
-                    comp.vdom = RenderVDOM.update(comp.target, comp.vdom, newVNode);
-                    // console.log(currentComponent)
-                    // console.log({ After: comp.vdom });   
+                    const newVNode = comp.renderFn();
 
-                    // console.log(comp);
+
+
+
+                    if (!comp.vdom) {
+                        comp.vdom = RenderVDOM.render(newVNode, comp.target);
+
+                    } else {
+
+                        comp.vdom = RenderVDOM.update(comp.target, comp.vdom, newVNode);
+
+
+
+                    }
+
+
+
+                    setHooks(id, comp.hooks);
+                } catch (error) {
+                    console.error(error);
                 }
-                setHooks(id, comp.hooks);
-            } catch (error) {
-                console.error(error)
-            }
+                onReady(executeJobs);
+            })
+
         }
     };
     comp.rerender();
     return comp;
-}
+};
 
 
 export {
     resetContext, useState, useEffect,
     useMemo, useRef, createRoot,
     forgot, destroy, retainData,
-    comp, manageComponent, allocate,
+    comp, allocate,
     orphan, setRegression, triggerRerender
 };
