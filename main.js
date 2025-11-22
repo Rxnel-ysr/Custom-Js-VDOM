@@ -4,15 +4,11 @@ import env from './env.json' with {type: 'json'}
 import appRouter from "./router/index.js";
 
 let app = createRoot(App, "#app", "App");
-appRouter.use(triggerRerender)
-console.log(app);
+appRouter.use(triggerRerender);
 
-
-if (env.hmr) {
-    const socket = new WebSocket(`ws://${location.hostname}:${env.server}`);
-
+if (env.app.hmr.enabled) {
+    const socket = new WebSocket(`ws://${location.hostname}:${env.app.hmr.port}`);
     socket.addEventListener('message', async ({ data }) => {
-        console.log('message was reciveed')
         const msg = JSON.parse(data);
         if (msg.type === 'reload') {
             try {
@@ -24,10 +20,7 @@ if (env.hmr) {
                 }
             } catch (error) {
                 console.log(error);
-
             }
-
         }
     });
-
 }

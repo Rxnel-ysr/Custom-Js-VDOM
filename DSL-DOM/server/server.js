@@ -40,8 +40,8 @@ const coreFiles = [
     'state.js'
 ];
 
-if (env.hmr) {
-    const { broadcast } = createWSServer(env.server);
+if (env.app.hmr.enabled) {
+    const { broadcast } = createWSServer(env.app.hmr.port);
     let prev, prevRepeat = 1;
 
     watch(root, (filePath) => {
@@ -167,6 +167,6 @@ function transformImports(code, importerFilePath) {
     return code;
 }
 
-server.listen(env.frontend, () => {
+server.listen(env.app.port, () => {
     console.log('Frontend server running on http://localhost:3000');
 });

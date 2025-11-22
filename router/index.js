@@ -1,5 +1,6 @@
 import { create } from "../DSL-DOM/core/router.js";
 import { createVNode, registerCustomVdom } from "../DSL-DOM/core/vdom.js";
+import {currentUri} from "../DSL-DOM/helper/helper.js"
 
 const appRouter = create({
     prefix: '',
@@ -19,16 +20,16 @@ registerCustomVdom('routerLink', (props = {}, ...children) => {
     return createVNode('a', {
         ...props, onclick: (e) => {
             e.preventDefault()
-            let current = currentUri()
+            let different = currentUri() !== destination;
             // console.log("hm");
 
-            if (destination) {
+            if (different) {
                 // console.log("hm a");
                 appRouter.go(finalDestination);
             }
             // console.log(to.lastIndexOf('#'));
             if (scroll) {
-                if (current === destination) {
+                if (different) {
                     appRouter.scrollToHash(scroll);
                 } else {
                     pushJob(() => {

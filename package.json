@@ -1,11 +1,11 @@
 {
-  "name": "foto-copy-of-react",
-  "version": "0.0.1",
-  "description": "A reverse enginered React(maybe)",
+  "name": "DSL-DOM",
+  "version": "0.1.0",
+  "description": "A reverse engineered React",
   "keywords": [
     "native"
   ],
-  "license": "ISC",
+  "license": "MIT",
   "author": "Ronel",
   "type": "module",
   "main": "main.js",
@@ -14,4 +14,3 @@
     "dev": "node DSL-DOM/server/server.js"
   }
 }
-    

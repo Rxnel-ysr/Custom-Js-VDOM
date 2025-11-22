@@ -18,8 +18,6 @@ const App = () => {
         html.br(),
         html.button({ onclick: () => setCounter(i => i + 1) }, "Add")
     ])
-
 }
-
 
 export default App;
